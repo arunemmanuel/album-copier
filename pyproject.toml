@@ -1,0 +1,15 @@
+[tool.briefcase]
+project_name = "File Copy Utility"
+bundle = "com.example"
+version = "0.2.0"
+url = "https://example.com/file-copy-utility"
+license = "MIT"
+author = "File Copy Utility Contributors"
+author_email = "support@example.com"
+
+[tool.briefcase.app.filecopyutility]
+formal_name = "File Copy Utility"
+description = "Desktop utility for copying requested files with verification and reports."
+sources = ["."]
+requires = ["PySide6>=6.7", "reportlab>=4.2"]
+test_requires = ["pytest>=8.0"]

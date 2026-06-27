@@ -7,6 +7,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QThread
 
+from services.file_operation_service import CopyOptions
 from workers.copy_worker import CopyWorker
 
 
@@ -23,6 +24,7 @@ class CopyController:
         source_folder: Path,
         destination_folder: Path,
         filename_list_path: Path,
+        options: CopyOptions,
         on_progress,
         on_finished,
         on_failed,
@@ -32,7 +34,7 @@ class CopyController:
 
         self.thread = QThread()
         self.worker = CopyWorker(
-            source_folder, destination_folder, filename_list_path, self.logger
+            source_folder, destination_folder, filename_list_path, options, self.logger
         )
         self.worker.moveToThread(self.thread)
 
@@ -59,6 +61,18 @@ class CopyController:
 
         if self.worker is not None:
             self.worker.cancel()
+
+    def pause(self) -> None:
+        """Pause the active copy operation."""
+
+        if self.worker is not None:
+            self.worker.pause()
+
+    def resume(self) -> None:
+        """Resume the active copy operation."""
+
+        if self.worker is not None:
+            self.worker.resume()
 
     def is_running(self) -> bool:
         """Return whether the worker thread is active."""
