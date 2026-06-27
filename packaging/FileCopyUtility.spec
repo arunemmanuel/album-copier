@@ -1,13 +1,18 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-block_cipher = None
+from pathlib import Path
 
+block_cipher = None
+spec_path = Path(SPEC) if 'SPEC' in globals() else None
+root = spec_path.resolve().parent.parent if spec_path else Path.cwd()
+
+icon_path = str(root / "resources" / "icon.ico")
 a = Analysis(
-    ["../main.py"],
-    pathex=[],
+    [str(root / "main.py")],
+    pathex=[str(root)],
     binaries=[],
-    datas=[("../resources", "resources"), ("../logs", "logs")],
-    hiddenimports=[],
+    datas=[(str(root / "resources"), "resources"), (str(root / "logs"), "logs"), (str(root / "samples"), "samples")],
+    hiddenimports=["PySide6", "PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets"],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -28,4 +33,5 @@ exe = EXE(
     strip=False,
     upx=True,
     console=False,
+    icon=icon_path,
 )
