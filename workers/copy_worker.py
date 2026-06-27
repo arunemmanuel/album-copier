@@ -14,6 +14,7 @@ from models.result_model import (
     CopyResults,
     DuplicateRequest,
     MissingFile,
+    RequestResult,
 )
 from services.file_operation_service import CopyOptions, FileOperationService
 from utils.file_utils import (
@@ -60,6 +61,9 @@ class CopyWorker(QObject):
 
         try:
             self.logger.info("Copy start")
+            self.service.index_source_folder(
+                self.source_folder, self.options.recursive_search
+            )
             filenames = read_filename_list(self.filename_list_path)
             duplicate_map = duplicate_counts(filenames)
             unique_filenames = unique_filenames_in_order(filenames)
@@ -86,29 +90,54 @@ class CopyWorker(QObject):
                     return
 
                 self._emit_progress(results, processed - 1, total_unique, filename)
-                matches = self.service.source_matches(
-                    self.source_folder, filename, self.options.recursive_search
+                matches, issue, match_type, suffix = self.service.resolve_source_match(
+                    self.source_folder,
+                    filename,
+                    self.options.recursive_search,
+                    self.options.fallback_mode,
+                    self.options.ambiguous_policy,
                 )
-                resolved, issue = self.service.resolve_matches(
-                    filename, matches, self.options.ambiguous_policy
+                request_result = RequestResult(
+                    requested_filename=filename,
+                    matched_filename="",
+                    match_type=match_type,
+                    searched_suffix=suffix,
+                    status="Missing",
                 )
+
                 if isinstance(issue, MissingFile):
+                    request_result.status = "Missing"
+                    results.request_results.append(request_result)
                     results.missing_files.append(issue)
                     self.logger.info("Missing file: %s", filename)
                     self._emit_progress(results, processed, total_unique, filename)
                     continue
-                if isinstance(issue, AmbiguousFile):
-                    results.ambiguous_files.append(issue)
-                    self.logger.info("Ambiguous file: %s (%s matches)", filename, len(matches))
-                    if not resolved:
+
+                resolved_matches, ambiguity = self.service.resolve_matches(
+                    filename, matches, self.options.ambiguous_policy
+                )
+                if isinstance(ambiguity, AmbiguousFile):
+                    request_result.status = "Skipped" if not resolved_matches else "Copied"
+                    results.ambiguous_files.append(ambiguity)
+                    self.logger.info(
+                        "Ambiguous file: %s (%s matches)", filename, len(matches)
+                    )
+                    if not resolved_matches:
+                        results.request_results.append(request_result)
                         self._emit_progress(results, processed, total_unique, filename)
                         continue
 
-                for source_path in resolved:
+                if resolved_matches:
+                    request_result.matched_filename = resolved_matches[0].name
+                    request_result.source_path = resolved_matches[0]
+                    request_result.status = "Copied"
+                for source_path in resolved_matches:
                     decision = self.service.copy_one(
                         source_path, self.destination_folder, self.options
                     )
                     if decision.already_exists:
+                        request_result.status = "Already Exists"
+                        request_result.destination_path = decision.already_exists.destination_path
                         results.already_exists_files.append(decision.already_exists)
                         self.logger.info(
                             "Already exists: %s",
@@ -116,6 +145,8 @@ class CopyWorker(QObject):
                         )
                         continue
                     if decision.copied:
+                        request_result.status = "Copied"
+                        request_result.destination_path = decision.copied.destination_path
                         results.copied_files.append(decision.copied)
                         self.logger.info(
                             "Copied file: %s -> %s",
@@ -126,6 +157,8 @@ class CopyWorker(QObject):
                         results.verification_failures.append(
                             decision.verification_failure
                         )
+
+                results.request_results.append(request_result)
                 self._emit_progress(results, processed, total_unique, filename)
 
             results.elapsed_seconds = time.perf_counter() - start

@@ -26,7 +26,21 @@ class ReportRepository:
         folder.mkdir(parents=True, exist_ok=True)
         outputs = {
             "copied_files.csv": self._copied_rows(results),
-            "missing_files.csv": [["Filename"], *[[item.filename] for item in results.missing_files]],
+            "request_results.csv": [
+                ["Requested Filename", "Matched Filename", "Match Type", "Source Path", "Destination Path", "Status"],
+                *[
+                    [
+                        item.requested_filename,
+                        item.matched_filename,
+                        item.match_type,
+                        str(item.source_path) if item.source_path else "",
+                        str(item.destination_path) if item.destination_path else "",
+                        item.status,
+                    ]
+                    for item in results.request_results
+                ],
+            ],
+            "missing_files.csv": [["Filename", "Searched Suffix"], *[[item.filename, item.searched_suffix] for item in results.missing_files]],
             "duplicate_requests.csv": [
                 ["Filename", "Occurrence Count"],
                 *[
@@ -83,7 +97,24 @@ class ReportRepository:
         summary = self._summary_rows(results)
         sections = [
             ("Copied Files", self._copied_rows(results)),
-            ("Missing Files", [["Filename"], *[[item.filename] for item in results.missing_files]]),
+            (
+                "Match Results",
+                [
+                    ["Requested Filename", "Matched Filename", "Match Type", "Source Path", "Destination Path", "Status"],
+                    *[
+                        [
+                            item.requested_filename,
+                            item.matched_filename,
+                            item.match_type,
+                            str(item.source_path) if item.source_path else "",
+                            str(item.destination_path) if item.destination_path else "",
+                            item.status,
+                        ]
+                        for item in results.request_results
+                    ],
+                ],
+            ),
+            ("Missing Files", [["Filename", "Searched Suffix"], *[[item.filename, item.searched_suffix] for item in results.missing_files]]),
             (
                 "Duplicate Requests",
                 [
@@ -178,7 +209,21 @@ class ReportRepository:
         ]
         for title, rows in (
             ("Copied Files", self._copied_rows(results)),
-            ("Missing Files", [["Filename"], *[[item.filename] for item in results.missing_files]]),
+            ("Match Results", [
+                ["Requested Filename", "Matched Filename", "Match Type", "Source Path", "Destination Path", "Status"],
+                *[
+                    [
+                        item.requested_filename,
+                        item.matched_filename,
+                        item.match_type,
+                        str(item.source_path) if item.source_path else "",
+                        str(item.destination_path) if item.destination_path else "",
+                        item.status,
+                    ]
+                    for item in results.request_results
+                ],
+            ]),
+            ("Missing Files", [["Filename", "Searched Suffix"], *[[item.filename, item.searched_suffix] for item in results.missing_files]]),
             ("Duplicate Requests", [["Filename", "Occurrence Count"], *[[item.filename, str(item.occurrence_count)] for item in results.duplicate_requests]]),
             ("Existing Files", [["Filename", "Destination Path"], *[[item.filename, str(item.destination_path)] for item in results.already_exists_files]]),
             ("Verification Failures", [["Filename", "Source Path", "Destination Path"], *[[item.filename, str(item.source_path), str(item.destination_path)] for item in results.verification_failures]]),
@@ -203,6 +248,9 @@ class ReportRepository:
             ["Total Requested", str(results.total_filenames)],
             ["Files Copied", str(results.copied_count)],
             ["Files Missing", str(results.missing_count)],
+            ["Exact Matches", str(results.exact_match_count)],
+            ["Last 4 Characters Matches", str(results.suffix_match_count)],
+            ["Multiple Matches Resolved", str(results.multiple_match_count)],
             ["Duplicate Requests", str(results.duplicate_count)],
             ["Already Existing", str(results.already_exists_count)],
             ["Ambiguous Files", str(results.ambiguous_count)],

@@ -32,6 +32,9 @@ from models.result_model import (
     AMBIGUOUS_ALL,
     AMBIGUOUS_FIRST,
     AMBIGUOUS_SKIP,
+    FALLBACK_EXACT_ONLY,
+    FALLBACK_EXACT_SUFFIX,
+    FALLBACK_SUFFIX_ONLY,
     OVERWRITE_RENAME,
     OVERWRITE_REPLACE,
     OVERWRITE_SKIP,
@@ -177,11 +180,19 @@ class MainWindow(QMainWindow):
         self.overwrite_combo.addItems([OVERWRITE_SKIP, OVERWRITE_REPLACE, OVERWRITE_RENAME])
         self.ambiguous_combo = QComboBox()
         self.ambiguous_combo.addItems([AMBIGUOUS_FIRST, AMBIGUOUS_ALL, AMBIGUOUS_SKIP])
+        self.fallback_combo = QComboBox()
+        self.fallback_combo.addItems([
+            FALLBACK_EXACT_ONLY,
+            FALLBACK_EXACT_SUFFIX,
+            FALLBACK_SUFFIX_ONLY,
+        ])
         option_row.addWidget(self.recursive_checkbox)
         option_row.addWidget(QLabel("Overwrite Policy"))
         option_row.addWidget(self.overwrite_combo)
         option_row.addWidget(QLabel("Ambiguous Matches"))
         option_row.addWidget(self.ambiguous_combo)
+        option_row.addWidget(QLabel("Fallback Matching"))
+        option_row.addWidget(self.fallback_combo)
         option_row.addWidget(self.verify_checkbox)
         option_row.addStretch()
         root.addLayout(option_row)
@@ -267,6 +278,18 @@ class MainWindow(QMainWindow):
             "verification_failures",
             "Verification Failures",
             ["Filename", "Source Path", "Destination Path"],
+        )
+        self._add_result_tab(
+            "request_results",
+            "Match Results",
+            [
+                "Requested Filename",
+                "Matched Filename",
+                "Match Type",
+                "Source Path",
+                "Destination Path",
+                "Status",
+            ],
         )
         root.addWidget(self.tabs, stretch=1)
 
@@ -375,6 +398,7 @@ class MainWindow(QMainWindow):
         self.view_log_button.clicked.connect(lambda: self._open_path(Path("logs/application.log")))
         self.overwrite_combo.currentTextChanged.connect(self._save_settings)
         self.ambiguous_combo.currentTextChanged.connect(self._save_settings)
+        self.fallback_combo.currentTextChanged.connect(self._save_settings)
         self.recursive_checkbox.toggled.connect(self._save_settings)
         self.verify_checkbox.toggled.connect(self._save_settings)
         for edit in (self.source_edit, self.destination_edit, self.filename_edit):
@@ -470,6 +494,7 @@ class MainWindow(QMainWindow):
                 overwrite_policy=self.overwrite_combo.currentText(),
                 ambiguous_policy=self.ambiguous_combo.currentText(),
                 verify_copies=self.verify_checkbox.isChecked(),
+                fallback_mode=self.fallback_combo.currentText(),
             ),
             self._on_progress,
             self._on_finished,
@@ -533,6 +558,7 @@ class MainWindow(QMainWindow):
             self.verify_checkbox,
             self.overwrite_combo,
             self.ambiguous_combo,
+            self.fallback_combo,
         ):
             widget.setEnabled(not running)
 
@@ -601,6 +627,18 @@ class MainWindow(QMainWindow):
                     str(failure.destination_path),
                 ],
             )
+        for item in results.request_results:
+            self._append_row(
+                "request_results",
+                [
+                    item.requested_filename,
+                    item.matched_filename,
+                    item.match_type,
+                    str(item.source_path) if item.source_path else "",
+                    str(item.destination_path) if item.destination_path else "",
+                    item.status,
+                ],
+            )
 
     def _append_row(self, key: str, values: list[str]) -> None:
         items = [QStandardItem(value) for value in values]
@@ -612,8 +650,9 @@ class MainWindow(QMainWindow):
         return (
             "Total filenames: {total}    Copied: {copied}    Missing: {missing}    "
             "Duplicate Requests: {duplicates}    Already Exists: {exists}    "
-            "Ambiguous: {ambiguous}    Verified: {verified}    "
-            "Verification Failed: {failed}    Elapsed Time: {elapsed:.2f}s"
+            "Ambiguous: {ambiguous}    Exact Matches: {exact}    "
+            "Last 4 Matches: {suffix}    Multiple Matches: {multiple}    "
+            "Verified: {verified}    Verification Failed: {failed}    Elapsed Time: {elapsed:.2f}s"
         ).format(
             total=results.total_filenames,
             copied=results.copied_count,
@@ -621,6 +660,9 @@ class MainWindow(QMainWindow):
             duplicates=results.duplicate_count,
             exists=results.already_exists_count,
             ambiguous=results.ambiguous_count,
+            exact=results.exact_match_count,
+            suffix=results.suffix_match_count,
+            multiple=results.multiple_match_count,
             verified=results.verification_passed_count,
             failed=results.verification_failed_count,
             elapsed=results.elapsed_seconds,
@@ -713,6 +755,7 @@ class MainWindow(QMainWindow):
         self.verify_checkbox.setChecked(self.settings.value("verify_copies", False, bool))
         self.overwrite_combo.setCurrentText(self.settings.value("overwrite_policy", OVERWRITE_SKIP, str))
         self.ambiguous_combo.setCurrentText(self.settings.value("ambiguous_policy", AMBIGUOUS_FIRST, str))
+        self.fallback_combo.setCurrentText(self.settings.value("fallback_mode", FALLBACK_EXACT_SUFFIX, str))
         self.resize(self.settings.value("window_size", self.size()))
         position = self.settings.value("window_position")
         if position:
@@ -728,6 +771,7 @@ class MainWindow(QMainWindow):
         self.settings.setValue("verify_copies", self.verify_checkbox.isChecked())
         self.settings.setValue("overwrite_policy", self.overwrite_combo.currentText())
         self.settings.setValue("ambiguous_policy", self.ambiguous_combo.currentText())
+        self.settings.setValue("fallback_mode", self.fallback_combo.currentText())
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt method name.
         self.settings.setValue("window_size", self.size())

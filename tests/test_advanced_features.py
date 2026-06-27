@@ -9,7 +9,11 @@ from models.result_model import (
     OVERWRITE_RENAME,
     OVERWRITE_REPLACE,
     OVERWRITE_SKIP,
+    FALLBACK_EXACT_ONLY,
+    FALLBACK_EXACT_SUFFIX,
+    FALLBACK_SUFFIX_ONLY,
     AmbiguousFile,
+    MissingFile,
 )
 from reports.report_repository import ReportRepository
 from services.file_operation_service import CopyOptions, FileOperationService
@@ -61,6 +65,65 @@ def test_rename_policy_never_overwrites_existing_file(tmp_path: Path):
     assert next_available_path(destination / "example.pdf") == (
         destination / "example (2).pdf"
     )
+
+
+def test_suffix_fallback_matches_last_four_characters(tmp_path: Path):
+    source = tmp_path / "source"
+    source.mkdir()
+    target = source / "Customer_2345.pdf"
+    target.write_text("fallback", encoding="utf-8")
+
+    resolved, issue, match_type, suffix = service().resolve_source_match(
+        source,
+        "Invoice_ABC12345.pdf",
+        recursive=False,
+        fallback_mode=FALLBACK_EXACT_SUFFIX,
+        ambiguous_policy=AMBIGUOUS_SKIP,
+    )
+
+    assert issue is None
+    assert match_type == "Last 4 Characters Match"
+    assert suffix == "2345"
+    assert resolved == [target]
+
+
+def test_suffix_fallback_missing_includes_searched_suffix(tmp_path: Path):
+    source = tmp_path / "source"
+    source.mkdir()
+
+    resolved, issue, match_type, suffix = service().resolve_source_match(
+        source,
+        "Invoice_ABC12345.pdf",
+        recursive=False,
+        fallback_mode=FALLBACK_EXACT_SUFFIX,
+        ambiguous_policy=AMBIGUOUS_SKIP,
+    )
+
+    assert resolved == []
+    assert isinstance(issue, MissingFile)
+    assert issue.searched_suffix == "2345"
+    assert match_type == "Missing"
+    assert suffix == "2345"
+
+
+def test_exact_only_mode_skips_suffix_fallback(tmp_path: Path):
+    source = tmp_path / "source"
+    source.mkdir()
+    target = source / "Customer_2345.pdf"
+    target.write_text("fallback", encoding="utf-8")
+
+    resolved, issue, match_type, suffix = service().resolve_source_match(
+        source,
+        "Invoice_ABC12345.pdf",
+        recursive=False,
+        fallback_mode=FALLBACK_EXACT_ONLY,
+        ambiguous_policy=AMBIGUOUS_SKIP,
+    )
+
+    assert resolved == []
+    assert isinstance(issue, MissingFile)
+    assert match_type == "Missing"
+    assert suffix == "2345"
 
 
 def test_copy_skip_existing_returns_already_exists(tmp_path: Path):

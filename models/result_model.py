@@ -15,6 +15,10 @@ AMBIGUOUS_FIRST = "Copy first match only"
 AMBIGUOUS_ALL = "Copy all matches"
 AMBIGUOUS_SKIP = "Skip ambiguous files"
 
+FALLBACK_EXACT_ONLY = "Exact Match Only"
+FALLBACK_EXACT_SUFFIX = "Exact → Last 4 Characters (Default)"
+FALLBACK_SUFFIX_ONLY = "Last 4 Characters Only"
+
 
 @dataclass(frozen=True)
 class CopiedFile:
@@ -38,6 +42,7 @@ class MissingFile:
     """Information about a requested file that was not found."""
 
     filename: str
+    searched_suffix: str = ""
 
 
 @dataclass(frozen=True)
@@ -76,6 +81,19 @@ class VerificationFailure:
     destination_checksum: str
 
 
+@dataclass(frozen=True)
+class RequestResult:
+    """Result for one requested filename, including fallback details."""
+
+    requested_filename: str
+    matched_filename: str = ""
+    match_type: str = "Missing"
+    source_path: Path | None = None
+    destination_path: Path | None = None
+    status: str = "Missing"
+    searched_suffix: str = ""
+
+
 @dataclass
 class CopyResults:
     """Aggregated results for a copy operation."""
@@ -87,6 +105,7 @@ class CopyResults:
     already_exists_files: list[AlreadyExistsFile] = field(default_factory=list)
     ambiguous_files: list[AmbiguousFile] = field(default_factory=list)
     verification_failures: list[VerificationFailure] = field(default_factory=list)
+    request_results: list[RequestResult] = field(default_factory=list)
     elapsed_seconds: float = 0.0
     source_folder: Path | None = None
     destination_folder: Path | None = None
@@ -126,6 +145,22 @@ class CopyResults:
     def verification_failed_count(self) -> int:
         return len(self.verification_failures)
 
+    @property
+    def exact_match_count(self) -> int:
+        return sum(1 for item in self.request_results if item.match_type == "Exact Match")
+
+    @property
+    def suffix_match_count(self) -> int:
+        return sum(
+            1 for item in self.request_results if item.match_type == "Last 4 Characters Match"
+        )
+
+    @property
+    def multiple_match_count(self) -> int:
+        return sum(
+            1 for item in self.request_results if item.match_type == "Multiple Suffix Matches"
+        )
+
     def summary(self) -> dict[str, int | float]:
         """Return a compact summary suitable for UI display or tests."""
 
@@ -136,6 +171,9 @@ class CopyResults:
             "duplicate_requests": self.duplicate_count,
             "already_exists": self.already_exists_count,
             "ambiguous": self.ambiguous_count,
+            "exact_matches": self.exact_match_count,
+            "suffix_matches": self.suffix_match_count,
+            "multiple_matches": self.multiple_match_count,
             "verification_passed": self.verification_passed_count,
             "verification_failed": self.verification_failed_count,
             "elapsed_seconds": self.elapsed_seconds,
